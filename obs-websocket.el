@@ -13,6 +13,7 @@
 (defvar obs-websocket-recording-p nil "Non-nil if recording.")
 (defvar obs-websocket-status "" "Modeline string.")
 (defvar obs-websocket-scene "" "Current scene.")
+(defvar obs-websocket-recording-filename nil "Filename of current or most recent recording.")
 
 (defun obs-websocket-update-mode-line ()
   "Update the text for the mode line."
@@ -60,8 +61,10 @@
               (setq obs-websocket-streaming-p nil)
               (obs-websocket-update-mode-line)
               "Stopped streaming.")
-             ("RecordingStarting"
-              (setq obs-websocket-recording-p t)
+             ("RecordingStarted"
+              (prin1 payload)
+              (setq obs-websocket-recording-p t
+                    obs-websocket-recording-filename (plist-get payload :recordingFilename))
               (obs-websocket-update-mode-line)
               "Started recording.")
              ("RecordingStopped"
@@ -70,6 +73,7 @@
               "Stopped recording")
              ("StreamStatus"
               (setq obs-websocket-streaming-p t)
+              ;(prin1 payload)
               nil)
              )))
       (when msg (message "OBS: %s" msg)))))
@@ -101,7 +105,6 @@
       (catch 'err
         (funcall (cdr callback) frame payload))
       (delete callback obs-websocket-message-callbacks))
-    
     (run-hook-with-args 'obs-websocket-on-message-payload-functions payload)))
 
 (defun obs-websocket-on-close (&rest args)
