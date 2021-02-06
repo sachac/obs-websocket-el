@@ -6,7 +6,7 @@ You'll need [[https://obsproject.com/][Open Broadcaster Software]] and the [[htt
 it. Set it up in =Tools > WebSockets Server Settings=. Set a password
 there.
 
-You will also need =websocket=, which is available from GNU ELPA. You can install it with
+You will also need [[https://elpa.gnu.org/packages/websocket.html][websocket]], which is available from GNU ELPA. You can install it with
 =M-x package-install RET websocket RET=.
 
 You will probably be able to use =M-x obs-websocket-connect= to
