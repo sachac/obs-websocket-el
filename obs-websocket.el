@@ -37,12 +37,12 @@
   (let ((info '(obs-websocket-minor-mode obs-websocket-status " ")))
     (if obs-websocket-minor-mode
         ;; put in modeline
-        (add-to-list 'mode-line-misc-info info)
+        (add-to-list 'mode-line-front-space info)
       ;; remove from modeline
-      (setq mode-line-format
+      (setq mode-line-front-space
             (seq-remove (lambda (x)
                           (and (listp x) (equal (car x) 'obs-websocket-minor-mode)))
-                        mode-line-format)))))
+                        mode-line-front-space)))))
 
 (defun obs-websocket-report-status (payload)
   (if (equal (plist-get payload :status) "error")
