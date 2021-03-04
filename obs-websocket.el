@@ -1,3 +1,35 @@
+;;; obs-websocket.el --- Interact with Open Broadcaster Software through a websocket   -*- lexical-binding: t; -*-
+
+;; Copyright (C) 2021  Sacha Chua
+
+;; Author: Sacha Chua <sacha@sachachua.com>
+;; Keywords: recording streaming
+;; Version: 0.10
+;; Homepage: https://github.com/sachac/obs-websocket-el
+;; Package-Requires: ((emacs "26.1") (websocket))
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+;;
+;; You will also need to install:
+;; OBS: https://obsproject.com/
+;; obs-websocket: https://github.com/Palakis/obs-websocket
+;; websocket.el: https://github.com/ahyatt/emacs-websocket
+
+;;; Code:
+
 (require 'websocket)
 (require 'json)
 (defvar obs-websocket-url "ws://localhost:4444" "URL for OBS instance. Use wss:// if secured by TLS.")
@@ -45,7 +77,9 @@
                         mode-line-front-space)))))
 
 (defun obs-websocket-report-status (payload)
-  (if (equal (plist-get payload :status) "error")
+  "Print friendly messages for PAYLOAD."
+  (if (and (equal (plist-get payload :status) "error")
+           (not (plist-get payload :authRequired)))
       (error "OBS: %s" (plist-get payload :error))
     (let ((msg
            (pcase (plist-get payload :update-type)
@@ -62,7 +96,6 @@
               (obs-websocket-update-mode-line)
               "Stopped streaming.")
              ("RecordingStarted"
-              (prin1 payload)
               (setq obs-websocket-recording-p t
                     obs-websocket-recording-filename (plist-get payload :recordingFilename))
               (obs-websocket-update-mode-line)
@@ -79,6 +112,7 @@
       (when msg (message "OBS: %s" msg)))))
 
 (defun obs-websocket-authenticate-if-needed (payload)
+  "Authenticate if PAYLOAD asks for it."
   (when (plist-get payload :authRequired)
     (let* ((challenge (plist-get payload :challenge))
            (salt (plist-get payload :salt))
@@ -108,10 +142,12 @@
     (run-hook-with-args 'obs-websocket-on-message-payload-functions payload)))
 
 (defun obs-websocket-on-close (&rest args)
+  "Display a message when the connection has closed."
   (setq obs-websocket nil)
   (message "OBS connection closed."))
 
 (defun obs-websocket-send (request-type &rest args)
+  "Send a message of type REQUEST-TYPE."
   (when (plist-get args :callback)
     (add-to-list 'obs-websocket-message-callbacks
                   (cons (number-to-string obs-websocket-message-id) (plist-get args :callback)))
@@ -124,6 +160,11 @@
     (websocket-send-text obs-websocket msg)
     (when obs-websocket-debug (prin1 msg)))
   (setq obs-websocket-message-id (1+ obs-websocket-message-id)))
+
+(defun obs-websocket-disconnect ()
+  "Disconnect from an OBS instance."
+  (interactive)
+  (when obs-websocket (websocket-close obs-websocket)))
 
 (defun obs-websocket-connect (&optional url password)
   "Connect to an OBS instance."
@@ -145,3 +186,4 @@
     (obs-websocket-minor-mode 1)))
 
 (provide 'obs-websocket)
+;;; obs-websocket.el ends here
