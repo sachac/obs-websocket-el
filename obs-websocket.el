@@ -126,14 +126,13 @@
 
 (defun obs-websocket-authenticate-if-needed (payload)
   "Authenticate if PAYLOAD asks for it."
-  (pcase-let ((`(:authentication ,auth-data) payload))
-    (when auth-data
-      (let* ((password (or obs-websocket-password
-                           (read-passwd "OBS websocket password:")))
-             (auth (apply #'obs--auth-string (append auth-data (list :password password)))))
-        (when obs-websocket-debug
-          (push (list :authenticating auth) obs-websocket-messages))
-        (obs-websocket-send-identify auth)))))
+  (when-let ((auth-data (plist-get payload :authentication)))
+    (let* ((password (or obs-websocket-password
+                         (read-passwd "OBS websocket password:")))
+           (auth (apply #'obs--auth-string (append auth-data (list :password password)))))
+      (when obs-websocket-debug
+        (push (list :authenticating auth) obs-websocket-messages))
+      (obs-websocket-send-identify auth))))
 
 (defun obs-websocket-on-identified (payload)
   "Handle OBS Identified repsonse."
@@ -141,25 +140,32 @@
   ;; Even non-authentication requests will receive this event /
   ;; response. Let's run the initial information requests here.
   (obs-websocket-send "GetStreamStatus"
-                      :callback (lambda (payload)
-                                  (pcase-let ((`(:responseData ,data) payload))
-                                    (setq obs-websocket-streaming-p (eq (plist-get data :outputActive) t)))
-                                  (obs-websocket-update-mode-line)))
+                      :callback
+                      (lambda (payload)
+                        (let ((data (plist-get payload :responseData)))
+                          (setq obs-websocket-streaming-p
+                                (eq (plist-get data :outputActive) t))
+                          (obs-websocket-update-mode-line))))
   (obs-websocket-send "GetRecordStatus"
-                      :callback (lambda (payload)
-                                  (pcase-let ((`(:responseData ,data) payload))
-                                    (setq obs-websocket-recording-p (eq (plist-get data :outputActive) t))
-                                    (obs-websocket-update-mode-line))))
+                      :callback
+                      (lambda (payload)
+                        (let ((data (plist-get payload :responseData)))
+                          (setq obs-websocket-recording-p
+                                (eq (plist-get data :outputActive) t))
+                          (obs-websocket-update-mode-line))))
   (obs-websocket-send "GetCurrentProgramScene"
-                      :callback (lambda (payload)
-                                  (pcase-let ((`(:responseData ,data) payload))
-                                    (setq obs-websocket-scene (plist-get data :sceneName))
-                                    (obs-websocket-update-mode-line))))
+                      :callback
+                      (lambda (payload)
+                        (let ((data (plist-get payload :responseData)))
+                          (setq obs-websocket-scene (plist-get data :sceneName))
+                          (obs-websocket-update-mode-line))))
   (obs-websocket-minor-mode 1))
 
 (defun obs-websocket-marshall-message (payload)
-  (pcase-let ((`( :d ,message-data :op ,opcode ) payload))
+  (let ((opcode (plist-get payload :op))
+        (message-data (plist-get payload :d)))
     (cl-check-type opcode (integer 0 *) "positive integer op code expected")
+    ;; TODO: replace magic-number opcodes
     (cl-ecase opcode
       (0 (obs-websocket-authenticate-if-needed message-data))
       (2 (when obs-websocket-debug
@@ -169,7 +175,11 @@
            (push (list :event payload) obs-websocket-messages)))
       (7 (when obs-websocket-debug
            (push (list :requestResponse payload) obs-websocket-messages))
-         (pcase-let ((`(:requestId ,request-id) message-data))
+         (let ((request-id (plist-get message-data :requestId))
+               (request-status (plist-get message-data :requestStatus)))
+           ;; TODO: Handle errors in request-status
+           ;; if (and (equal (plist-get payload :status) "error"))
+           ;; (error "OBS: %s" (plist-get payload :error))
            (when-let ((callback (assoc request-id obs-websocket-message-callbacks)))
              (catch 'err
                (funcall (cdr callback) message-data))
