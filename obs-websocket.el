@@ -196,7 +196,12 @@ plist."
 
 (defun obs-websocket-on-close (&rest args)
   "Display a message when the connection has closed."
-  (setq obs-websocket nil)
+  (setq obs-websocket nil
+        obs-websocket-scene nil
+        obs-websocket-status "")
+  (unless obs-websocket-debug
+    (setq obs-websocket-messages nil))
+  (obs-websocket-update-mode-line)
   (message "OBS connection closed."))
 
 (defun obs-websocket-send (request-type &rest args)
