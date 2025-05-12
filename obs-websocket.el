@@ -63,7 +63,8 @@
                       (if obs-websocket-recording-p "Rec" "")
                       "*")
                    ""))))
-    (setq obs-websocket-status info)))
+    (setq obs-websocket-status info)
+    (force-mode-line-update)))
 
 (define-minor-mode obs-websocket-minor-mode
   "Minor mode for OBS Websocket."
