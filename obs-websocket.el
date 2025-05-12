@@ -149,11 +149,10 @@
 
 (defun obs-websocket-on-message (websocket frame)
   "Handle OBS WEBSOCKET sending FRAME."
+  (when obs-websocket-debug
+    (setq obs-websocket-messages (cons frame obs-websocket-messages)))
   (let* ((payload (json-parse-string (websocket-frame-payload frame)
                                      :object-type 'plist :array-type 'list)))
-    (when obs-websocket-debug
-      (setq obs-websocket-messages (cons frame obs-websocket-messages)))
-
     (run-hook-with-args 'obs-websocket-on-message-payload-functions payload)))
 
 (defun obs-websocket-on-close (&rest args)
