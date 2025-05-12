@@ -1,5 +1,5 @@
 * obs-websocket-el
-  
+
 Totally bubblegum-and-string at the moment.
 
 You'll need [[https://obsproject.com/][Open Broadcaster Software]] and the [[https://obsproject.com/forum/resources/obs-websocket-remote-control-obs-studio-from-websockets.466/][obs-websocket]] plugin for
@@ -45,9 +45,52 @@ Here's my config. It uses use-package and hydra.
   :load-path "~/code/obs-websocket-el" :ensure nil)
 #+end_src
 
-Better installation instructions will eventually be written by
-someone, if anyone wants to actually maintain this. 
+Here is another config option using =use-package= and =transient= features standard in Emacs 30:
 
-Protocol reference: https://github.com/Palakis/obs-websocket/blob/4.x-current/docs/generated/protocol.md
+#+begin_src emacs-lisp
+(use-package websocket
+  :ensure t
+  :defer t)
+
+(use-package obs-websocket
+  :ensure t
+  :after (websocket)
+  :vc (:url "https://github.com/sachac/obs-websocket-el.git"
+            :rev :newest)
+  :bind (("<f8>" . my/obs-websocket-tmenu))
+  :config
+  (transient-define-prefix my/obs-websocket-tmenu ()
+    "Transient menu for controlling OBS via websocket"
+    ["Connection"
+     ("c" "Connect to OBS" obs-websocket-connect)]
+    ["Streaming"
+     ("sb" "Stream - begin"
+      (lambda () (interactive)
+        (obs-websocket-send "StartStreaming")))
+     ("se" "Stream - end"
+      (lambda () (interactive)
+        (obs-websocket-send "StopStreaming")))]
+    ["Scenes"
+     ("d" "Desktop"
+      (lambda () (interactive)
+        (obs-websocket-send "SetCurrentProgramScene" :sceneName "Desktop")))
+     ("e" "Emacs"
+      (lambda () (interactive)
+        (obs-websocket-send "SetCurrentProgramScene" :sceneName "Emacs")))
+     ("i" "Intermission"
+      (lambda () (interactive)
+        (obs-websocket-send "SetCurrentProgramScene" :sceneName "Intermission")))
+     ("v" "Browse Channel"
+      (lambda () (interactive)
+        (browse-url "https://twitch.tv/<your-channel-here>")))
+     ]))
+#+end_src
+
+
+Better installation instructions will eventually be written by
+someone, if anyone wants to actually maintain this.
+
+Protocol reference: [[https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md][5.x.x Websocket Protocol Reference]]
+
 
 My e-mail address is [[sacha@sachachua.com]], although I tend to reply slowly.
