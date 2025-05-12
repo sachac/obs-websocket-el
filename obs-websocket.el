@@ -116,8 +116,10 @@
              )))
       (when msg (message "OBS: %s" msg)))))
 
-(cl-defun obs--auth-string (&key salt challenge password &allow-other-keys)
-  "Creates an OBS-expected authentication string from"
+(cl-defun obs-websocket--auth-string
+    (&key salt challenge password &allow-other-keys)
+  "Creates an OBS-expected authentication string from an `:authentication'
+plist."
   (cl-flet ((obs-encode (string-1 string-2)
               (base64-encode-string
                (secure-hash 'sha256 (concat string-1 string-2) nil nil t))))
@@ -129,7 +131,8 @@
   (when-let ((auth-data (plist-get payload :authentication)))
     (let* ((password (or obs-websocket-password
                          (read-passwd "OBS websocket password:")))
-           (auth (apply #'obs--auth-string (append auth-data (list :password password)))))
+           (auth (apply #'obs-websocket--auth-string
+                        (append auth-data (list :password password)))))
       (when obs-websocket-debug
         (push (list :authenticating auth) obs-websocket-messages))
       (obs-websocket-send-identify auth))))
