@@ -26,14 +26,14 @@
 ;;
 ;; You will also need to install:
 ;; OBS: https://obsproject.com/
-;; obs-websocket: https://github.com/Palakis/obs-websocket
+;; obs-websocket: https://github.com/obsproject/obs-websocket
 ;; websocket.el: https://github.com/ahyatt/emacs-websocket
 
 ;;; Code:
 
 (require 'websocket)
 (require 'json)
-(defvar obs-websocket-url "ws://localhost:4444" "URL for OBS instance. Use wss:// if secured by TLS.")
+(defvar obs-websocket-url "ws://localhost:4455" "URL for OBS instance. Use wss:// if secured by TLS.")
 (defvar obs-websocket-password nil "Password for OBS.")
 (defvar obs-websocket nil "Socket for communicating with OBS.")
 (defvar obs-websocket-messages nil "Messages from OBS.")
