@@ -1,6 +1,7 @@
 ;;; obs-websocket.el --- Interact with Open Broadcaster Software through a websocket   -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2021  Sacha Chua
+;; Copyright (C) 2025  Charlie McMackin
 
 ;; Author: Sacha Chua <sacha@sachachua.com>
 ;; Keywords: recording streaming
