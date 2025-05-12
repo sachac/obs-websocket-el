@@ -37,7 +37,11 @@
 (defvar obs-websocket nil "Socket for communicating with OBS.")
 (defvar obs-websocket-messages nil "Messages from OBS.")
 (defvar obs-websocket-message-id 0 "Starting message ID.")
-(defvar obs-websocket-on-message-payload-functions '(obs-websocket-authenticate-if-needed obs-websocket-report-status)
+(defvar obs-websocket-rpc-version 1 "Lastest OBS RPC version supported.")
+(defvar obs-websocket-obs-websocket-version nil "Connected OBS' Web Socket Version")
+(defvar obs-websocket-obs-studio-version nil "Connected OBS' Studio Version")
+(defvar obs-websocket-on-message-payload-functions '(obs-websocket-marshall-message ;obs-websocket-report-status
+                                                     )
   "Functions to call when messages arrive.")
 (defvar obs-websocket-debug nil "Debug messages")
 (defvar obs-websocket-message-callbacks nil "Alist of (message-id . callback-func)")
@@ -111,34 +115,45 @@
              )))
       (when msg (message "OBS: %s" msg)))))
 
+(cl-defun obs--auth-string (&key salt challenge password &allow-other-keys)
+  "Creates an OBS-expected authentication string from"
+  (cl-flet ((obs-encode (string-1 string-2)
+              (base64-encode-string
+               (secure-hash 'sha256 (concat string-1 string-2) nil nil t))))
+    (obs-encode (obs-encode password salt)
+                challenge)))
+
 (defun obs-websocket-authenticate-if-needed (payload)
   "Authenticate if PAYLOAD asks for it."
-  (when (plist-get payload :authRequired)
-    (let* ((challenge (plist-get payload :challenge))
-           (salt (plist-get payload :salt))
-           (auth (base64-encode-string
-                  (secure-hash 'sha256
-                               (concat
-                                (base64-encode-string
-                                 (secure-hash 'sha256
-                                              (concat (or obs-websocket-password (read-passwd "OBS password: "))
-                                                      salt)
-                                              nil nil t))
-                                challenge)
-                               nil nil t))))
-      (obs-websocket-send "Authenticate" :auth auth))))
+  (pcase-let ((`(:authentication ,auth-data) payload))
+    (when auth-data
+      (let* ((password (or obs-websocket-password
+                           (read-passwd "OBS websocket password:")))
+             (auth (apply #'obs--auth-string (append auth-data (list :password password)))))
+        (when obs-websocket-debug
+          (push (list :authenticating auth) obs-websocket-messages))
+        (obs-websocket-send-identify auth)))))
+
+(defun obs-websocket-marshall-message (payload)
+  (pcase-let ((`( :d ,message-data :op ,opcode ) payload))
+    (cl-check-type opcode (integer 0 *) "positive integer op code expected")
+    (cl-ecase opcode
+      (0 (obs-websocket-authenticate-if-needed message-data))
+      (2 (when obs-websocket-debug
+           (push (list :identified payload) obs-websocket-messages)))
+      (5 (when obs-websocket-debug
+           (push (list :event payload) obs-websocket-messages)))
+      ;; (t (when obs-websocket-debug
+      ;;      (push (list :unhandled payload) obs-websocket-messages)))
+      )))
 
 (defun obs-websocket-on-message (websocket frame)
   "Handle OBS WEBSOCKET sending FRAME."
-  (let* ((payload (json-parse-string (websocket-frame-payload frame) :object-type 'plist :array-type 'list))
-         (message-id (plist-get payload :message-id))
-         (callback (assoc message-id obs-websocket-message-callbacks)))
+  (let* ((payload (json-parse-string (websocket-frame-payload frame)
+                                     :object-type 'plist :array-type 'list)))
     (when obs-websocket-debug
       (setq obs-websocket-messages (cons frame obs-websocket-messages)))
-    (when callback
-      (catch 'err
-        (funcall (cdr callback) frame payload))
-      (delete callback obs-websocket-message-callbacks))
+
     (run-hook-with-args 'obs-websocket-on-message-payload-functions payload)))
 
 (defun obs-websocket-on-close (&rest args)
@@ -150,16 +165,28 @@
   "Send a message of type REQUEST-TYPE."
   (when (plist-get args :callback)
     (add-to-list 'obs-websocket-message-callbacks
-                  (cons (number-to-string obs-websocket-message-id) (plist-get args :callback)))
+                 (cons (number-to-string obs-websocket-message-id)
+                       (plist-get args :callback)))
     (cl-remf args :callback))
   (let ((msg (json-encode-plist (append
                                  (list :request-type request-type
                                        :message-id (number-to-string obs-websocket-message-id))
-                                 
+
                                  args))))
     (websocket-send-text obs-websocket msg)
     (when obs-websocket-debug (prin1 msg)))
   (setq obs-websocket-message-id (1+ obs-websocket-message-id)))
+
+(defun obs-websocket-send-identify (auth-string)
+  (let ((msg (json-encode-plist
+              (list :op 1
+                    :d (list :rpcVersion obs-websocket-rpc-version
+                             :authentication auth-string)))))
+    (when obs-websocket-debug
+      (push (list :identifying msg) obs-websocket-messages))
+    (websocket-send-text obs-websocket msg)))
+
+
 
 (defun obs-websocket-disconnect ()
   "Disconnect from an OBS instance."
@@ -173,17 +200,19 @@
     (setq obs-websocket (websocket-open (or url obs-websocket-url)
                                         :on-message #'obs-websocket-on-message
                                         :on-close #'obs-websocket-on-close))
-    (obs-websocket-send "GetAuthRequired")
-    (obs-websocket-send "GetStreamingStatus"
-                        :callback (lambda (frame payload)
-                                    (setq obs-websocket-streaming-p (eq (plist-get payload :streaming) t))
-                                    (setq obs-websocket-recording-p (eq (plist-get payload :recording) t))
-                                    (obs-websocket-update-mode-line)))
-    (obs-websocket-send "GetCurrentScene"
-                        :callback (lambda (frame payload)
-                                    (setq obs-websocket-scene (plist-get payload :name))
-                                    (obs-websocket-update-mode-line)))
+    ;; (obs-websocket-send "Hello")
+    ;; (obs-websocket-send "GetStreamingStatus"
+    ;;                     :callback (lambda (frame payload)
+    ;;                                 (setq obs-websocket-streaming-p (eq (plist-get payload :streaming) t))
+    ;;                                 (setq obs-websocket-recording-p (eq (plist-get payload :recording) t))
+    ;;                                 (obs-websocket-update-mode-line)))
+    ;; (obs-websocket-send "GetCurrentScene"
+    ;;                     :callback (lambda (frame payload)
+    ;;                                 (setq obs-websocket-scene (plist-get payload :name))
+    ;;                                 (obs-websocket-update-mode-line)))
     (obs-websocket-minor-mode 1)))
+
+
 
 (provide 'obs-websocket)
 ;;; obs-websocket.el ends here
