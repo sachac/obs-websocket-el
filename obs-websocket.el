@@ -41,8 +41,7 @@
 (defvar obs-websocket-rpc-version 1 "Lastest OBS RPC version supported.")
 (defvar obs-websocket-obs-websocket-version nil "Connected OBS' Web Socket Version")
 (defvar obs-websocket-obs-studio-version nil "Connected OBS' Studio Version")
-(defvar obs-websocket-on-message-payload-functions '(obs-websocket-marshall-message ;obs-websocket-report-status
-                                                     )
+(defvar obs-websocket-on-message-payload-functions '(obs-websocket-marshall-message)
   "Functions to call when messages arrive.")
 (defvar obs-websocket-debug nil "Debug messages")
 (defvar obs-websocket-message-callbacks nil "Alist of (message-id . callback-func)")
@@ -83,38 +82,31 @@
 
 (defun obs-websocket-report-status (payload)
   "Print friendly messages for PAYLOAD."
-  (if (and (equal (plist-get payload :status) "error")
-           (not (plist-get payload :authRequired)))
-      (error "OBS: %s" (plist-get payload :error))
-    (let ((msg
-           (pcase (plist-get payload :update-type)
-             ("SwitchScenes"
-              (setq obs-websocket-scene (plist-get payload :scene-name))
-              (format "Switched scene to %s" (plist-get payload :scene-name)))
-             ("StreamStarting" "Stream starting.")
-             ("StreamStarted"
-              (setq obs-websocket-streaming-p t)
-              (obs-websocket-update-mode-line)
-              "Started streaming.")
-             ("StreamStopped"
-              (setq obs-websocket-streaming-p nil)
-              (obs-websocket-update-mode-line)
-              "Stopped streaming.")
-             ("RecordingStarted"
-              (setq obs-websocket-recording-p t
-                    obs-websocket-recording-filename (plist-get payload :recordingFilename))
-              (obs-websocket-update-mode-line)
-              "Started recording.")
-             ("RecordingStopped"
-              (setq obs-websocket-recording-p nil)
-              (obs-websocket-update-mode-line)
-              "Stopped recording")
-             ("StreamStatus"
-              (setq obs-websocket-streaming-p t)
-              ;(prin1 payload)
-              nil)
-             )))
-      (when msg (message "OBS: %s" msg)))))
+  (when-let* ((event-data (plist-get payload :eventData))
+              (msg
+               (pcase (plist-get payload :eventType)
+                 ("CurrentProgramSceneChanged"
+                  (when-let ((scene-name (plist-get event-data :sceneName)))
+                    (setq obs-websocket-scene scene-name)
+                    (obs-websocket-update-mode-line)
+                    (format "Switched scene to %s" scene-name)))
+                 ("StreamStateChanged"
+                  (let ((streaming-p (plist-get event-data :outputActive)))
+                    (setq obs-websocket-streaming-p streaming-p)
+                    (obs-websocket-update-mode-line)
+                    (if streaming-p
+                        "Started streaming."
+                      "Stopped streaming.")))
+                 ("RecordingStateChanged"
+                  (let* ((recording-p (plist-get event-data :outputActive))
+                         (recording-path (plist-get event-data :outputPath)))
+                    (setq obs-websocket-recording-p recording-p
+                          obs-websocket-recording-filename recording-path)
+                    (obs-websocket-update-mode-line)
+                    (if recording-p
+                        "Started recording."
+                      "Stopped recording."))))))
+    (message "OBS: %s" msg)))
 
 (cl-defun obs-websocket--auth-string
     (&key salt challenge password &allow-other-keys)
@@ -175,7 +167,8 @@ plist."
            (push (list :identified payload) obs-websocket-messages))
          (obs-websocket-on-identified payload))
       (5 (when obs-websocket-debug
-           (push (list :event payload) obs-websocket-messages)))
+           (push (list :event payload) obs-websocket-messages))
+         (obs-websocket-report-status message-data))
       (7 (when obs-websocket-debug
            (push (list :requestResponse payload) obs-websocket-messages))
          (let ((request-id (plist-get message-data :requestId))
