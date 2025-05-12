@@ -134,13 +134,36 @@
           (push (list :authenticating auth) obs-websocket-messages))
         (obs-websocket-send-identify auth)))))
 
+(defun obs-websocket-on-identified (payload)
+  "Handle OBS Identified repsonse."
+
+  ;; Even non-authentication requests will receive this event /
+  ;; response. Let's run the initial information requests here.
+  (obs-websocket-send "GetStreamStatus"
+                      :callback (lambda (payload)
+                                  (pcase-let ((`(:responseData ,data) payload))
+                                    (setq obs-websocket-streaming-p (eq (plist-get data :outputActive) t)))
+                                  (obs-websocket-update-mode-line)))
+  (obs-websocket-send "GetRecordStatus"
+                      :callback (lambda (payload)
+                                  (pcase-let ((`(:responseData ,data) payload))
+                                    (setq obs-websocket-recording-p (eq (plist-get data :outputActive) t))
+                                    (obs-websocket-update-mode-line))))
+  (obs-websocket-send "GetCurrentProgramScene"
+                      :callback (lambda (payload)
+                                  (pcase-let ((`(:responseData ,data) payload))
+                                    (setq obs-websocket-scene (plist-get data :sceneName))
+                                    (obs-websocket-update-mode-line))))
+  (obs-websocket-minor-mode 1))
+
 (defun obs-websocket-marshall-message (payload)
   (pcase-let ((`( :d ,message-data :op ,opcode ) payload))
     (cl-check-type opcode (integer 0 *) "positive integer op code expected")
     (cl-ecase opcode
       (0 (obs-websocket-authenticate-if-needed message-data))
       (2 (when obs-websocket-debug
-           (push (list :identified payload) obs-websocket-messages)))
+           (push (list :identified payload) obs-websocket-messages))
+         (obs-websocket-on-identified payload))
       (5 (when obs-websocket-debug
            (push (list :event payload) obs-websocket-messages)))
       (7 (when obs-websocket-debug
@@ -206,27 +229,7 @@
   (let ((obs-websocket-password (or password obs-websocket-password)))
     (setq obs-websocket (websocket-open (or url obs-websocket-url)
                                         :on-message #'obs-websocket-on-message
-                                        :on-close #'obs-websocket-on-close))
-
-    ;; Poor man's async to wait for identification
-    (sleep-for 0.1)
-
-    (obs-websocket-send "GetStreamStatus"
-                        :callback (lambda (payload)
-                                    (pcase-let ((`(:responseData ,data) payload))
-                                      (setq obs-websocket-streaming-p (eq (plist-get data :outputActive) t)))
-                                    (obs-websocket-update-mode-line)))
-    (obs-websocket-send "GetRecordStatus"
-                        :callback (lambda (payload)
-                                    (pcase-let ((`(:responseData ,data) payload))
-                                      (setq obs-websocket-recording-p (eq (plist-get data :outputActive) t))
-                                      (obs-websocket-update-mode-line))))
-    (obs-websocket-send "GetCurrentProgramScene"
-                        :callback (lambda (payload)
-                                    (pcase-let ((`(:responseData ,data) payload))
-                                      (setq obs-websocket-scene (plist-get data :sceneName))
-                                      (obs-websocket-update-mode-line))))
-    (obs-websocket-minor-mode 1)))
+                                        :on-close #'obs-websocket-on-close))))
 
 
 
