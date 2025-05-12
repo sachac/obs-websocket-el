@@ -143,6 +143,14 @@
            (push (list :identified payload) obs-websocket-messages)))
       (5 (when obs-websocket-debug
            (push (list :event payload) obs-websocket-messages)))
+      (7 (when obs-websocket-debug
+           (push (list :requestResponse payload) obs-websocket-messages))
+         (pcase-let ((`(:requestId ,request-id) message-data))
+           (when-let ((callback (assoc request-id obs-websocket-message-callbacks)))
+             (catch 'err
+               (funcall (cdr callback) message-data))
+             (setf obs-websocket-message-callbacks
+                   (assoc-delete-all request-id obs-websocket-message-callbacks)))))
       ;; (t (when obs-websocket-debug
       ;;      (push (list :unhandled payload) obs-websocket-messages)))
       )))
@@ -161,17 +169,19 @@
   (message "OBS connection closed."))
 
 (defun obs-websocket-send (request-type &rest args)
-  "Send a message of type REQUEST-TYPE."
-  (when (plist-get args :callback)
+  "Send a request of type REQUEST-TYPE."
+  (when-let ((callback (plist-get args :callback)))
     (add-to-list 'obs-websocket-message-callbacks
                  (cons (number-to-string obs-websocket-message-id)
-                       (plist-get args :callback)))
+                       callback))
     (cl-remf args :callback))
-  (let ((msg (json-encode-plist (append
-                                 (list :request-type request-type
-                                       :message-id (number-to-string obs-websocket-message-id))
-
-                                 args))))
+  (let ((msg (json-encode-plist
+              (list :op 6
+                    :d
+                    (append (list :requestType request-type
+                                  :requestId (number-to-string obs-websocket-message-id))
+                            (when args
+                              (list :requestData args)))))))
     (websocket-send-text obs-websocket msg)
     (when obs-websocket-debug (prin1 msg)))
   (setq obs-websocket-message-id (1+ obs-websocket-message-id)))
@@ -185,8 +195,6 @@
       (push (list :identifying msg) obs-websocket-messages))
     (websocket-send-text obs-websocket msg)))
 
-
-
 (defun obs-websocket-disconnect ()
   "Disconnect from an OBS instance."
   (interactive)
@@ -199,16 +207,25 @@
     (setq obs-websocket (websocket-open (or url obs-websocket-url)
                                         :on-message #'obs-websocket-on-message
                                         :on-close #'obs-websocket-on-close))
-    ;; (obs-websocket-send "Hello")
-    ;; (obs-websocket-send "GetStreamingStatus"
-    ;;                     :callback (lambda (frame payload)
-    ;;                                 (setq obs-websocket-streaming-p (eq (plist-get payload :streaming) t))
-    ;;                                 (setq obs-websocket-recording-p (eq (plist-get payload :recording) t))
-    ;;                                 (obs-websocket-update-mode-line)))
-    ;; (obs-websocket-send "GetCurrentScene"
-    ;;                     :callback (lambda (frame payload)
-    ;;                                 (setq obs-websocket-scene (plist-get payload :name))
-    ;;                                 (obs-websocket-update-mode-line)))
+
+    ;; Poor man's async to wait for identification
+    (sleep-for 0.1)
+
+    (obs-websocket-send "GetStreamStatus"
+                        :callback (lambda (payload)
+                                    (pcase-let ((`(:responseData ,data) payload))
+                                      (setq obs-websocket-streaming-p (eq (plist-get data :outputActive) t)))
+                                    (obs-websocket-update-mode-line)))
+    (obs-websocket-send "GetRecordStatus"
+                        :callback (lambda (payload)
+                                    (pcase-let ((`(:responseData ,data) payload))
+                                      (setq obs-websocket-recording-p (eq (plist-get data :outputActive) t))
+                                      (obs-websocket-update-mode-line))))
+    (obs-websocket-send "GetCurrentProgramScene"
+                        :callback (lambda (payload)
+                                    (pcase-let ((`(:responseData ,data) payload))
+                                      (setq obs-websocket-scene (plist-get data :sceneName))
+                                      (obs-websocket-update-mode-line))))
     (obs-websocket-minor-mode 1)))
 
 
