@@ -83,30 +83,37 @@
 
 (defun obs-websocket-report-status (payload)
   "Print friendly messages for PAYLOAD."
-  (when-let* ((event-data (plist-get payload :eventData))
-              (msg
-               (pcase (plist-get payload :eventType)
-                 ("CurrentProgramSceneChanged"
-                  (when-let ((scene-name (plist-get event-data :sceneName)))
-                    (setq obs-websocket-scene scene-name)
-                    (obs-websocket-update-mode-line)
-                    (format "Switched scene to %s" scene-name)))
-                 ("StreamStateChanged"
-                  (let ((streaming-p (plist-get event-data :outputActive)))
-                    (setq obs-websocket-streaming-p streaming-p)
-                    (obs-websocket-update-mode-line)
-                    (if streaming-p
-                        "Started streaming."
-                      "Stopped streaming.")))
-                 ("RecordingStateChanged"
-                  (let* ((recording-p (plist-get event-data :outputActive))
-                         (recording-path (plist-get event-data :outputPath)))
-                    (setq obs-websocket-recording-p recording-p
-                          obs-websocket-recording-filename recording-path)
-                    (obs-websocket-update-mode-line)
-                    (if recording-p
-                        "Started recording."
-                      "Stopped recording."))))))
+  (when-let*
+      ((event-data (plist-get payload :eventData))
+       (msg
+        (pcase (plist-get payload :eventType)
+          ("CurrentProgramSceneChanged"
+           (when-let ((scene-name (plist-get event-data :sceneName)))
+             (setq obs-websocket-scene scene-name)
+             (obs-websocket-update-mode-line)
+             (format "Switched scene to %s" scene-name)))
+          ("StreamStateChanged"
+           (let ((streaming-p (plist-get event-data :outputActive))
+                 (state (plist-get event-data :outputState)))
+             (setq obs-websocket-streaming-p streaming-p)
+             (obs-websocket-update-mode-line)
+             (pcase state
+               ("OBS_WEBSOCKET_OUTPUT_STARTING" "Stream starting...")
+               ("OBS_WEBSOCKET_OUTPUT_STARTED" "Started streaming.")
+               ("OBS_WEBSOCKET_OUTPUT_STOPPING" "Stream stopping...")
+               ("OBS_WEBSOCKET_OUTPUT_STOPPED" "Stopped streaming."))))
+          ("RecordStateChanged"
+           (let* ((recording-p (plist-get event-data :outputActive))
+                  (recording-path (plist-get event-data :outputPath))
+                  (state (plist-get event-data :outputState)))
+             (setq obs-websocket-recording-p recording-p
+                   obs-websocket-recording-filename recording-path)
+             (obs-websocket-update-mode-line)
+             (pcase state
+               ("OBS_WEBSOCKET_OUTPUT_STARTING" "Recording starting...")
+               ("OBS_WEBSOCKET_OUTPUT_STARTED" "Started recording.")
+               ("OBS_WEBSOCKET_OUTPUT_STOPPING" "Recording stopping...")
+               ("OBS_WEBSOCKET_OUTPUT_STOPPED" "Stopped recording.")))))))
     (message "OBS: %s" msg)))
 
 (cl-defun obs-websocket--auth-string
