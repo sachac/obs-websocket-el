@@ -83,18 +83,19 @@
 
 (defun obs-websocket-report-status (payload)
   "Print friendly messages for PAYLOAD."
-  (when-let*
-      ((event-data (plist-get payload :eventData))
-       (msg
+  (when-let
+      ((msg
         (pcase (plist-get payload :eventType)
           ("CurrentProgramSceneChanged"
-           (when-let ((scene-name (plist-get event-data :sceneName)))
+           (when-let* ((event-data (plist-get payload :eventData))
+                       (scene-name (plist-get event-data :sceneName)))
              (setq obs-websocket-scene scene-name)
              (obs-websocket-update-mode-line)
              (format "Switched scene to %s" scene-name)))
           ("StreamStateChanged"
-           (let ((streaming-p (plist-get event-data :outputActive))
-                 (state (plist-get event-data :outputState)))
+           (let* ((event-data (plist-get payload :eventData))
+                  (streaming-p (eq (plist-get event-data :outputActive) t))
+                  (state (plist-get event-data :outputState)))
              (setq obs-websocket-streaming-p streaming-p)
              (obs-websocket-update-mode-line)
              (pcase state
@@ -103,7 +104,8 @@
                ("OBS_WEBSOCKET_OUTPUT_STOPPING" "Stream stopping...")
                ("OBS_WEBSOCKET_OUTPUT_STOPPED" "Stopped streaming."))))
           ("RecordStateChanged"
-           (let* ((recording-p (plist-get event-data :outputActive))
+           (let* ((event-data (plist-get payload :eventData))
+                  (recording-p (eq (plist-get event-data :outputActive) t))
                   (recording-path (plist-get event-data :outputPath))
                   (state (plist-get event-data :outputState)))
              (setq obs-websocket-recording-p recording-p
@@ -113,7 +115,11 @@
                ("OBS_WEBSOCKET_OUTPUT_STARTING" "Recording starting...")
                ("OBS_WEBSOCKET_OUTPUT_STARTED" "Started recording.")
                ("OBS_WEBSOCKET_OUTPUT_STOPPING" "Recording stopping...")
-               ("OBS_WEBSOCKET_OUTPUT_STOPPED" "Stopped recording.")))))))
+               ("OBS_WEBSOCKET_OUTPUT_STOPPED" "Stopped recording."))))
+          ("ExitStarted"
+           (prog1
+               "OBS application exiting..."
+             (obs-websocket-disconnect))))))
     (message "OBS: %s" msg)))
 
 (cl-defun obs-websocket--auth-string
