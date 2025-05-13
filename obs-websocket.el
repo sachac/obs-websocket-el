@@ -181,16 +181,16 @@ plist."
            (push (list :requestResponse payload) obs-websocket-messages))
          (let ((request-id (plist-get message-data :requestId))
                (request-status (plist-get message-data :requestStatus)))
-           ;; TODO: Handle errors in request-status
-           ;; if (and (equal (plist-get payload :status) "error"))
-           ;; (error "OBS: %s" (plist-get payload :error))
-           (when-let ((callback (assoc request-id obs-websocket-message-callbacks)))
-             (catch 'err
-               (funcall (cdr callback) message-data))
-             (setf obs-websocket-message-callbacks
-                   (assoc-delete-all request-id obs-websocket-message-callbacks)))))
-      ;; (t (when obs-websocket-debug
-      ;;      (push (list :unhandled payload) obs-websocket-messages)))
+           (if (eq (plist-get request-status :result) :false)
+               (error "OBS: Error code %d -- %s"
+                      (plist-get request-status :code)
+                      (plist-get request-status :comment))
+             (when-let ((callback (assoc request-id obs-websocket-message-callbacks)))
+               (catch 'err
+                 (funcall (cdr callback) message-data))
+               (setf obs-websocket-message-callbacks
+                     (assoc-delete-all request-id obs-websocket-message-callbacks))))))
+      ;;TODO: Handle opcodes 8 and 9
       )))
 
 (defun obs-websocket-on-message (websocket frame)
