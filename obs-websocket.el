@@ -41,7 +41,7 @@
 (defvar obs-websocket-rpc-version 1 "Lastest OBS RPC version supported.")
 (defvar obs-websocket-obs-websocket-version nil "Connected OBS' Web Socket Version")
 (defvar obs-websocket-obs-studio-version nil "Connected OBS' Studio Version")
-(defvar obs-websocket-on-message-payload-functions '(obs-websocket-marshall-message)
+(defvar obs-websocket-on-message-payload-functions '(obs-websocket-marshal-message)
   "Functions to call when messages arrive.")
 (defvar obs-websocket-debug nil "Debug messages")
 (defvar obs-websocket-message-callbacks nil "Alist of (message-id . callback-func)")
@@ -164,7 +164,7 @@ plist."
                           (obs-websocket-update-mode-line))))
   (obs-websocket-minor-mode 1))
 
-(defun obs-websocket-marshall-message (payload)
+(defun obs-websocket-marshal-message (payload)
   (let ((opcode (plist-get payload :op))
         (message-data (plist-get payload :d)))
     (cl-check-type opcode (integer 0 *) "positive integer op code expected")
