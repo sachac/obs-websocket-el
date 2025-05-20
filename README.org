@@ -1,5 +1,7 @@
 * obs-websocket-el
 
+[2025-05-20 Tue] Announcement: cmack is the new maintainer. Yay! =) - Sacha
+
 Totally bubblegum-and-string at the moment.
 
 You'll need [[https://obsproject.com/][Open Broadcaster Software]] and the [[https://obsproject.com/forum/resources/obs-websocket-remote-control-obs-studio-from-websockets.466/][obs-websocket]] plugin for
@@ -93,4 +95,6 @@ someone, if anyone wants to actually maintain this.
 Protocol reference: [[https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md][5.x.x Websocket Protocol Reference]]
 
 
-My e-mail address is [[sacha@sachachua.com]], although I tend to reply slowly.
+Contributors:
+- cmack
+- sachac: My e-mail address is [[sacha@sachachua.com]], although I tend to reply slowly.
