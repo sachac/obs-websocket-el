@@ -57,7 +57,7 @@ Here is another config option using =use-package= and =transient= features stand
 (use-package obs-websocket
   :ensure t
   :after (websocket)
-  :vc (:url "https://github.com/sachac/obs-websocket-el.git"
+  :vc (:url "https://github.com/obs-websocket-el/obs-websocket-el.git"
             :rev :newest)
   :bind (("<f8>" . my/obs-websocket-tmenu))
   :config
