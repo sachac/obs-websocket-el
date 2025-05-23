@@ -51,16 +51,15 @@ Here is another config option using =use-package= and =transient= features stand
 
 #+begin_src emacs-lisp
 (use-package websocket
-  :ensure t
-  :defer t)
+  :ensure t)
 
 (use-package obs-websocket
   :ensure t
-  :after (websocket)
   :vc (:url "https://github.com/obs-websocket-el/obs-websocket-el.git"
             :rev :newest)
   :bind (("<f8>" . my/obs-websocket-tmenu))
   :config
+  (require 'transient)
   (transient-define-prefix my/obs-websocket-tmenu ()
     "Transient menu for controlling OBS via websocket"
     ["Connection"
