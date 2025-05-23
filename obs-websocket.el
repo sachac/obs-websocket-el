@@ -33,6 +33,7 @@
 
 (require 'websocket)
 (require 'json)
+(require 'map)
 (defvar obs-websocket-url "ws://localhost:4455" "URL for OBS instance. Use wss:// if secured by TLS.")
 (defvar obs-websocket-password nil "Password for OBS.")
 (defvar obs-websocket nil "Socket for communicating with OBS.")
@@ -41,7 +42,7 @@
 (defvar obs-websocket-rpc-version 1 "Lastest OBS RPC version supported.")
 (defvar obs-websocket-obs-websocket-version nil "Connected OBS' Web Socket Version")
 (defvar obs-websocket-obs-studio-version nil "Connected OBS' Studio Version")
-(defvar obs-websocket-on-message-payload-functions '(obs-websocket-marshal-message)
+(defvar obs-websocket-on-message-payload-functions '(obs-websocket-log-response obs-websocket-marshal-message)
   "Functions to call when messages arrive.")
 (defvar obs-websocket-debug nil "Debug messages")
 (defvar obs-websocket-message-callbacks nil "Alist of (message-id . callback-func)")
@@ -170,6 +171,31 @@ plist."
                           (obs-websocket-update-mode-line))))
   (obs-websocket-minor-mode 1))
 
+(defun obs-websocket-log-response (payload)
+  (when obs-websocket-debug
+    (map-let ((:op op-code)) payload
+      (push (list (cl-ecase op-code
+                    (0 :hello)
+                    (2 :identified)
+                    (5 :event)
+                    (7 :requestResponse)
+                    (9 :batchResponse))
+                  payload)
+            obs-websocket-messages))))
+
+(defun obs-websocket-on-response (message-data)
+  (let ((request-id (plist-get message-data :requestId))
+        (request-status (plist-get message-data :requestStatus)))
+    (if (eq (plist-get request-status :result) :false)
+        (error "OBS: Error code %d -- %s"
+               (plist-get request-status :code)
+               (plist-get request-status :comment))
+      (when-let ((callback (assoc request-id obs-websocket-message-callbacks)))
+        (catch 'err
+          (funcall (cdr callback) message-data))
+        (setf obs-websocket-message-callbacks
+              (assoc-delete-all request-id obs-websocket-message-callbacks))))))
+
 (defun obs-websocket-marshal-message (payload)
   (let ((opcode (plist-get payload :op))
         (message-data (plist-get payload :d)))
@@ -177,27 +203,9 @@ plist."
     ;; TODO: replace magic-number opcodes
     (cl-ecase opcode
       (0 (obs-websocket-authenticate-if-needed message-data))
-      (2 (when obs-websocket-debug
-           (push (list :identified payload) obs-websocket-messages))
-         (obs-websocket-on-identified payload))
-      (5 (when obs-websocket-debug
-           (push (list :event payload) obs-websocket-messages))
-         (obs-websocket-report-status message-data))
-      (7 (when obs-websocket-debug
-           (push (list :requestResponse payload) obs-websocket-messages))
-         (let ((request-id (plist-get message-data :requestId))
-               (request-status (plist-get message-data :requestStatus)))
-           (if (eq (plist-get request-status :result) :false)
-               (error "OBS: Error code %d -- %s"
-                      (plist-get request-status :code)
-                      (plist-get request-status :comment))
-             (when-let ((callback (assoc request-id obs-websocket-message-callbacks)))
-               (catch 'err
-                 (funcall (cdr callback) message-data))
-               (setf obs-websocket-message-callbacks
-                     (assoc-delete-all request-id obs-websocket-message-callbacks))))))
-      ;;TODO: Handle opcodes 8 and 9
-      )))
+      (2 (obs-websocket-on-identified payload))
+      (5 (obs-websocket-report-status message-data))
+      (7 (obs-websocket-on-response message-data)))))
 
 (defun obs-websocket-on-message (websocket frame)
   "Handle OBS WEBSOCKET sending FRAME."
