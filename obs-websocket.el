@@ -149,26 +149,27 @@ plist."
 
   ;; Even non-authentication requests will receive this event /
   ;; response. Let's run the initial information requests here.
-  (obs-websocket-send "GetStreamStatus"
-                      :callback
-                      (lambda (payload)
-                        (let ((data (plist-get payload :responseData)))
-                          (setq obs-websocket-streaming-p
-                                (eq (plist-get data :outputActive) t))
-                          (obs-websocket-update-mode-line))))
-  (obs-websocket-send "GetRecordStatus"
-                      :callback
-                      (lambda (payload)
-                        (let ((data (plist-get payload :responseData)))
-                          (setq obs-websocket-recording-p
-                                (eq (plist-get data :outputActive) t))
-                          (obs-websocket-update-mode-line))))
-  (obs-websocket-send "GetCurrentProgramScene"
-                      :callback
-                      (lambda (payload)
-                        (let ((data (plist-get payload :responseData)))
-                          (setq obs-websocket-scene (plist-get data :sceneName))
-                          (obs-websocket-update-mode-line))))
+  (obs-websocket-send-batch
+   `(("GetStreamStatus"
+      :callback
+      ,(lambda (payload)
+         (let ((data (plist-get payload :responseData)))
+           (setq obs-websocket-streaming-p
+                 (eq (plist-get data :outputActive) t))
+           (obs-websocket-update-mode-line))))
+     ("GetRecordStatus"
+      :callback
+      ,(lambda (payload)
+         (let ((data (plist-get payload :responseData)))
+           (setq obs-websocket-recording-p
+                 (eq (plist-get data :outputActive) t))
+           (obs-websocket-update-mode-line))))
+     ("GetCurrentProgramScene"
+      :callback
+      ,(lambda (payload)
+         (let ((data (plist-get payload :responseData)))
+           (setq obs-websocket-scene (plist-get data :sceneName))
+           (obs-websocket-update-mode-line))))))
   (obs-websocket-minor-mode 1))
 
 (defun obs-websocket-log-response (payload)
@@ -196,6 +197,10 @@ plist."
         (setf obs-websocket-message-callbacks
               (assoc-delete-all request-id obs-websocket-message-callbacks))))))
 
+(defun obs-websocket-on-batch-response (message-data)
+  (map-let ((:results results)) message-data
+    (mapc #'obs-websocket-on-response results)))
+
 (defun obs-websocket-marshal-message (payload)
   (let ((opcode (plist-get payload :op))
         (message-data (plist-get payload :d)))
@@ -205,7 +210,8 @@ plist."
       (0 (obs-websocket-authenticate-if-needed message-data))
       (2 (obs-websocket-on-identified payload))
       (5 (obs-websocket-report-status message-data))
-      (7 (obs-websocket-on-response message-data)))))
+      (7 (obs-websocket-on-response message-data))
+      (9 (obs-websocket-on-batch-response message-data)))))
 
 (defun obs-websocket-on-message (websocket frame)
   "Handle OBS WEBSOCKET sending FRAME."
@@ -255,6 +261,22 @@ plist."
     (when obs-websocket-debug
       (push (list :identifying msg) obs-websocket-messages))
     (websocket-send-text obs-websocket msg)))
+
+(defun obs-websocket-send-batch (requests)
+  "Send a batch of requests from list of REQUESTS"
+  (let* ((requests (map-apply (lambda (key vals)
+                                (apply #'obs-websocket-format-request key vals))
+                              requests))
+         (msg (json-encode
+               (list :op 8
+                     :d (list
+                         :requestId (number-to-string obs-websocket-message-id)
+                         ;; :haltOnFailure
+                         ;; :executionType
+                         :requests `[,@requests])))))
+    (websocket-send-text obs-websocket msg)
+    (when obs-websocket-debug (prin1 msg))
+    (cl-incf obs-websocket-message-id)))
 
 (defun obs-websocket-disconnect ()
   "Disconnect from an OBS instance."
