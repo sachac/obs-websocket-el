@@ -225,23 +225,27 @@ plist."
   (obs-websocket-update-mode-line)
   (message "OBS connection closed."))
 
-(defun obs-websocket-send (request-type &rest args)
-  "Send a request of type REQUEST-TYPE."
+(defun obs-websocket-format-request (request-type &rest args)
   (when-let ((callback (plist-get args :callback)))
     (add-to-list 'obs-websocket-message-callbacks
                  (cons (number-to-string obs-websocket-message-id)
                        callback))
     (cl-remf args :callback))
+
+  (prog1 (append (list :requestType request-type
+                       :requestId (number-to-string obs-websocket-message-id))
+                 (when (car args)
+                   (list :requestData args)))
+    (cl-incf obs-websocket-message-id)))
+
+(defun obs-websocket-send (request-type &rest args)
+  "Send a request of type REQUEST-TYPE."
   (let ((msg (json-encode-plist
               (list :op 6
-                    :d
-                    (append (list :requestType request-type
-                                  :requestId (number-to-string obs-websocket-message-id))
-                            (when args
-                              (list :requestData args)))))))
+                    :d (apply #'obs-websocket-format-request
+                              request-type args)))))
     (websocket-send-text obs-websocket msg)
-    (when obs-websocket-debug (prin1 msg)))
-  (setq obs-websocket-message-id (1+ obs-websocket-message-id)))
+    (when obs-websocket-debug (prin1 msg))))
 
 (defun obs-websocket-send-identify (auth-string)
   (let ((msg (json-encode-plist
